@@ -6,6 +6,8 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -21,7 +23,6 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
-import org.apache.poi.ss.util.CellReference;
 
 public class FileProducer {
 	
@@ -49,6 +50,17 @@ public class FileProducer {
 
 	public static void setConfigInputFileName(String configInputFileName) {
 		FileProducer.configInputFileName = configInputFileName;
+	}
+	
+	static final String CONFIGNAME_SIMPLESCHEMA = "_simple_schema";
+	static boolean isSimpleSchema = false;
+
+	public static boolean isSimpleSchema() {
+		return isSimpleSchema;
+	}
+
+	public static void setSimpleSchema(boolean isSimpleSchema) {
+		FileProducer.isSimpleSchema = isSimpleSchema;
 	}
 
 	public static void main(String[] args) throws EncryptedDocumentException, InvalidFormatException, IOException {
@@ -85,45 +97,12 @@ public class FileProducer {
 		InputStream inp = new FileInputStream( getConfigInputFileName() );
 		
 		Workbook wb = WorkbookFactory.create( inp );
-
-		DataFormatter formatter = new DataFormatter();
 		Sheet sheet1 = wb.getSheetAt( 0 );
+
+		Map< String, String > parseResult = parseExcelSheetToJson( sheet1 );
 		
-		for ( Row row : sheet1 ) {
-			for ( Cell cell : row ) {
-				CellReference cellRef = new CellReference( row.getRowNum(), cell.getColumnIndex() );
-				System.out.println( cellRef.formatAsString() );
-				System.out.println( " - " );
-				
-				String text = formatter.formatCellValue( cell );
-				System.out.println( text );
-				
-				switch ( cell.getCellTypeEnum() ) {
-				case STRING:
-					System.out.println( cell.getRichStringCellValue().getString() );
-					break;
-				case NUMERIC:
-					if ( DateUtil.isCellDateFormatted( cell ) ) {
-						System.out.println( cell.getDateCellValue() );
-					} else {
-						System.out.println( cell.getNumericCellValue() );
-					}
-					break;
-				case BOOLEAN:
-					System.out.println( cell.getBooleanCellValue() );
-					break;
-				case FORMULA:
-					System.out.println( cell.getCellFormula() );
-					break;
-				case BLANK:
-					System.out.println();
-					break;
-				default:
-					System.out.println();
-				}
-				
-				producer.send( new ProducerRecord< String, String >( getConfigTopicName(), cellRef.formatAsString(), cellRef.formatAsString() + " - " + text ) );
-			}
+		for ( Map.Entry< String, String> elem : parseResult.entrySet() ) {
+			producer.send( new ProducerRecord< String, String >( getConfigTopicName(), elem.getKey(), elem.getValue() ) );
 		}
 
 		producer.close();
@@ -146,6 +125,10 @@ public class FileProducer {
 			else if ( name.equals( CONFIGNAME_INPUTFILENAME ) ) {
 				setConfigInputFileName( value );
 			}
+			else if ( name.equals( CONFIGNAME_SIMPLESCHEMA ) ) {
+				if ( value.equals( "true" ) )
+					setSimpleSchema( true );
+			}
 			else {
 				// Kafka Producer API 기본 설정 처리.
 				// 일단 모든 설정의 value를 String 형식으로 입력한다.
@@ -155,5 +138,68 @@ public class FileProducer {
 			System.out.println( "name = " + name + ", value = " + value );
 		}
 		configFile.close();
+	}
+	
+	public static Map< String, String > parseExcelSheetToJson( Sheet sheet ) {
+		DataFormatter formatter = new DataFormatter();
+		Map< String, String > resultMap = new HashMap< String, String >();
+
+		for ( Row row : sheet ) {
+			String schemaStr = "{\"type\":\"struct\",\"fields\":[";
+			String payloadStr = "{";
+			for ( Cell cell : row ) {
+				String typeStr = "string";
+				String fieldStr = "\"" + String.valueOf( cell.getColumnIndex() ) + "\"";
+				String valueStr = formatter.formatCellValue( cell );
+				
+				switch ( cell.getCellTypeEnum() ) {
+				case NUMERIC:
+					if ( DateUtil.isCellDateFormatted( cell ) ) {
+						// cell.getDateCellValue();
+						valueStr = ( "\"" + valueStr + "\"" );
+					} else {
+						// cell.getNumericCellValue();
+						typeStr = "int32";
+					}
+					break;
+				case BOOLEAN:
+					// cell.getBooleanCellValue();
+					valueStr = ( "\"" + valueStr + "\"" );
+					break;
+				case FORMULA:
+					// cell.getCellFormula();
+					valueStr = ( "\"" + valueStr + "\"" );
+					break;
+				case BLANK:
+					valueStr = ( "\"\"" );
+					break;
+				default:	// case STRING:
+					// cell.getRichStringCellValue().getString();
+					valueStr = ( "\"" + valueStr + "\"" );
+					break;
+				}
+				
+				schemaStr += ( "{\"type\":\"" + typeStr + "\",\"optional\":false,\"field\":" + fieldStr + "}" );
+				payloadStr += ( fieldStr + ":" + valueStr );
+				if ( cell.getColumnIndex() != ( row.getLastCellNum() - 1 ) ) {
+					schemaStr += ",";
+					payloadStr += ",";
+				}
+			}
+			
+			schemaStr += ( "],\"optional\":false,\"name\":\"sheetrow\"}" );
+			payloadStr += "}";
+			
+			String result = payloadStr;
+			if ( !isSimpleSchema() ) {
+				result = "{\"schema\":" + schemaStr + ",\"payload\":" + payloadStr + "}";
+			}
+			
+			System.out.println( "Key : " + String.valueOf( row.getRowNum() ) + ", Value : " + result );
+			
+			resultMap.put( String.valueOf( row.getRowNum() ), result );
+		}
+		
+		return resultMap;
 	}
 }

@@ -21,3 +21,6 @@ _topic_name=my-topic
 
 // 읽어들일 파일 이름 설정
 _input_file_name=open_dataset_list.xlsx
+
+// schema 형식
+_simple_schema=true
