@@ -6,9 +6,9 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.TreeMap;
 
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -99,10 +99,10 @@ public class FileProducer {
 		Workbook wb = WorkbookFactory.create( inp );
 		Sheet sheet1 = wb.getSheetAt( 0 );
 
-		Map< String, String > parseResult = parseExcelSheetToJson( sheet1 );
+		Map< Integer, String > parseResult = parseExcelSheetToJson( sheet1 );
 		
-		for ( Map.Entry< String, String> elem : parseResult.entrySet() ) {
-			producer.send( new ProducerRecord< String, String >( getConfigTopicName(), elem.getKey(), elem.getValue() ) );
+		for ( Integer key : parseResult.keySet() ) {
+			producer.send( new ProducerRecord< String, String >( getConfigTopicName(), key.toString(), parseResult.get( key ) ) );
 		}
 
 		producer.close();
@@ -130,8 +130,8 @@ public class FileProducer {
 					setSimpleSchema( true );
 			}
 			else {
-				// Kafka Producer API ±âº» ¼³Á¤ Ã³¸®.
-				// ÀÏ´Ü ¸ðµç ¼³Á¤ÀÇ value¸¦ String Çü½ÄÀ¸·Î ÀÔ·ÂÇÑ´Ù.
+				// Kafka Producer API ï¿½âº» ï¿½ï¿½ï¿½ï¿½ Ã³ï¿½ï¿½.
+				// ï¿½Ï´ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ valueï¿½ï¿½ String ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ô·ï¿½ï¿½Ñ´ï¿½.
 				outProp.put( name, value );
 			}
 			
@@ -140,9 +140,9 @@ public class FileProducer {
 		configFile.close();
 	}
 	
-	public static Map< String, String > parseExcelSheetToJson( Sheet sheet ) {
+	public static Map< Integer, String > parseExcelSheetToJson( Sheet sheet ) {
 		DataFormatter formatter = new DataFormatter();
-		Map< String, String > resultMap = new HashMap< String, String >();
+		Map< Integer, String > resultMap = new TreeMap< Integer, String >();
 
 		for ( Row row : sheet ) {
 			String schemaStr = "{\"type\":\"struct\",\"fields\":[";
@@ -151,6 +151,7 @@ public class FileProducer {
 				String typeStr = "string";
 				String fieldStr = "\"" + String.valueOf( cell.getColumnIndex() ) + "\"";
 				String valueStr = formatter.formatCellValue( cell );
+				valueStr = valueStr.replace( "\"", "\\\"" );
 				
 				switch ( cell.getCellTypeEnum() ) {
 				case NUMERIC:
@@ -190,6 +191,11 @@ public class FileProducer {
 			schemaStr += ( "],\"optional\":false,\"name\":\"sheetrow\"}" );
 			payloadStr += "}";
 			
+			schemaStr = schemaStr.replace( "\r", "" );
+			schemaStr = schemaStr.replace( "\n", "" );
+			payloadStr = payloadStr.replace( "\r", "" );
+			payloadStr = payloadStr.replace( "\n", "" );
+			
 			String result = payloadStr;
 			if ( !isSimpleSchema() ) {
 				result = "{\"schema\":" + schemaStr + ",\"payload\":" + payloadStr + "}";
@@ -197,7 +203,7 @@ public class FileProducer {
 			
 			System.out.println( "Key : " + String.valueOf( row.getRowNum() ) + ", Value : " + result );
 			
-			resultMap.put( String.valueOf( row.getRowNum() ), result );
+			resultMap.put( row.getRowNum(), result );
 		}
 		
 		return resultMap;
