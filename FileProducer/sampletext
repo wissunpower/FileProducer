@@ -1,0 +1,3 @@
+This works with the 0.9.x consumer.
+Basically when you create a consumer, you need to assign a consumer group id to this consumer using the property ConsumerConfig.
+GROUP_ID_CONFIG. Generate the consumer group id randomly every time you start the consumer doing something like this  properties.put(ConsumerConfig.GROUP_ID_CONFIG, UUID.randomUUID().toString()); (properties is an instance of java.util.Properties that you will pass to the constructor new KafkaConsumer(properties)).

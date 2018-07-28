@@ -17,10 +17,10 @@ bootstrap.servers=localhost:9092
 // FileProducer App. 안에서 새로 정의한 옵션입니다.
 
 // 사용할 topic 의 이름 설정
-_topic_name=my-topic
+_topic_name=sampletext-topic1
 
 // 읽어들일 파일 이름 설정
-_input_file_name=open_dataset_list.xlsx
+_input_file_name=sampletext
 
 // schema 형식
 _simple_schema=true
